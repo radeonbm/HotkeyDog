@@ -16,8 +16,8 @@ Guard your system hotkeys like a loyal watchdog, completely preventing accidenta
 ## ✨ Features / 功能特点
 
 - **🖥️ 赛博暗黑风界面 / Cyberpunk GUI**：Owner-drawn dark theme, easy on eyes. / 简洁美观的自绘暗色主题。
-- **⚡ 一键热切换 / Hotkey Toggle**：Press `Ctrl + F12` to enable/disable anywhere. / 任何全屏或游戏状态下按 `Ctrl + F12` 瞬间开关守护。
-- **📦 动态分组控制 / Group Management**：Independent switches for different hotkey groups. / 按软件与系统功能完美归类，支持独立开关。
+- **⚡ 一键热切换 / Hotkey Toggle**：Press `Ctrl + F12` to enable/disable anywhere. / 任何全屏或游戏状态下按 `Ctrl + F12` 开关守护。
+- **📦 动态分组控制 / Group Management**：Independent switches for different hotkey groups. / 按软件与系统功能归类，支持独立开关。
 - **💾 配置自动保存 / Config Persistence**：Autosaves settings to `hotkey_dog.ini`. / 自动读写同目录下配置文件，记住你的选择。
 
 ---
