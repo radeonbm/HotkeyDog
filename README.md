@@ -16,7 +16,7 @@ Guard your system hotkeys like a loyal watchdog, completely preventing accidenta
 ## ✨ Features / 功能特点
 
 - **🖥️ 赛博暗黑风界面 / Cyberpunk GUI**：Owner-drawn dark theme, easy on eyes. / 简洁美观的自绘暗色主题。
-- **⚡ 一键热切换 / Hotkey Toggle**：Press `Ctrl + F12` to enable/disable anywhere. / 任何全屏或游戏状态下按 `Ctrl + F12` 开关守护。
+- **⚡ 一键热切换 / Hotkey Toggle**：Press `Ctrl + Alt + F10` to enable/disable anywhere. / 任何全屏或游戏状态下按 `Ctrl + Alt + F10` 开关守护。
 - **📦 动态分组控制 / Group Management**：Independent switches for different hotkey groups. / 按软件与系统功能归类，支持独立开关。
 - **💾 配置自动保存 / Config Persistence**：Autosaves settings to `hotkey_dog.ini`. / 自动读写同目录下配置文件，记住你的选择。
 
@@ -26,9 +26,7 @@ Guard your system hotkeys like a loyal watchdog, completely preventing accidenta
 
 ### 1. Run Directly / 直接使用 (Recommended)
 - Download `HotkeyDog.exe` from the **Releases** tab. / 在 **Releases** 页面下载编译好的可执行文件。
-- **Right-click -> Run as administrator** (Crucial to block high-privilege hotkeys). / **右键 -> 以管理员身份运行**（拦截高级别系统快捷键和全屏游戏内热键必须提升权限）。
+- Accept the UAC administrator prompt at launch (Crucial to block high-privilege hotkeys). / 启动时接受 UAC 管理员权限提示（拦截高级别系统快捷键和全屏游戏内热键必须提升权限）。
 
 ### 2. Compile / 从源码编译
-- **MinGW (g++)**:
-  ```bash
-  g++ -O2 -mwindows -static -o HotkeyDog.exe hotkey_dog.cpp -lcomctl32 -lshlwapi
+- Configure MSVC or MinGW-w64, then run `build_cpp.bat`. It embeds the administrator manifest. / 配置 MSVC 或 MinGW-w64 后运行 `build_cpp.bat`；它会嵌入管理员权限清单。

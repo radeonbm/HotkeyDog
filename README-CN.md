@@ -9,7 +9,7 @@
 - **暗黑科技风 GUI**：简洁美观的自绘（Owner-drawn）暗色主题界面，不刺眼。
 - **动态分组控制**：按软件和系统功能将热键分组管理，支持独立开关。
 - **配置自动持久化**：动态读取/保存同一目录下的 `hotkey_dog.ini`，记住你的选择。
-- **一键快捷热切换**：在任何全屏或游戏状态下，按下 `Ctrl + F12` 即可瞬间秒开/秒关守护状态。
+- **一键快捷热切换**：在任何全屏或游戏状态下，按下 `Ctrl + Alt + F10` 即可瞬间秒开/秒关守护状态。
 - **高分屏完美支持**：内置现代 DPI 适配（DPI Awareness），在高缩放屏幕下文字依然锐利清晰。
 - **智能隐藏至托盘**：点击最小化按钮时，程序会自动隐藏至右下角系统托盘，不占用任务栏空间。
 
@@ -18,22 +18,16 @@
 #### 直接使用（推荐）
 
 1. 在 Releases 页面下载编译好的 `HotkeyDog.exe`。
-2. **右键 -> 以管理员身份运行**（拦截高级别系统快捷键需要管理员权限）。
+2. 首次启动时接受 UAC 管理员权限提示（拦截高级别程序的快捷键需要管理员权限）。
 3. 勾选你想屏蔽的热键组，点击 **"启动守护"** 按钮。
 
 #### 从源码编译
 
-如果你配置了 C++ 编译环境，可以使用以下命令直接输出免依赖的二进制程序：
-
-- **使用 MinGW (g++) 编译**：
-  g++ -O2 -mwindows -static -o HotkeyDog.exe hotkey_dog.cpp -lcomctl32 -lshlwapi
-
-- **使用 MSVC (Visual Studio 命令行) 编译**：
-  cl /EHsc /O2 /utf-8 hotkey_dog.cpp /link comctl32.lib shell32.lib shlwapi.lib user32.lib gdi32.lib
+配置好 MSVC 或 MinGW-w64 后，运行 `build_cpp.bat`。脚本会嵌入管理员权限清单；请勿省略 `HotkeyDog.rc` 和 `HotkeyDog.manifest`。
 
 ### ⌨️ 全局控制热键
 
-- **Ctrl + F12**：全局无条件一键切换（启动守护 / 停止守护）
+- **Ctrl + Alt + F10**：全局一键切换（启动守护 / 停止守护，按住不连发）
 
 ### 🚫 默认屏蔽的热键规划
 
@@ -69,6 +63,8 @@
 HotkeyDog/
 ├── hotkey_dog.cpp          # C++ 主程序核心源码
 ├── build_cpp.bat           # Windows 一键编译脚本
+├── HotkeyDog.rc             # 嵌入应用清单的资源定义
+├── HotkeyDog.manifest       # 管理员权限清单
 ├── HotkeyDog.exe           # 编译后的免环境绿色可执行文件
 ├── readme_cn.md            # 中文使用说明书
 └── readme_en.md            # 英文使用说明书 (English Docs)

@@ -30,7 +30,12 @@ if not errorlevel 1 (
     echo 正在编译...
     if exist "%RCFILE%" (
         rc %RCFILE%
-        cl /EHsc /O2 /utf-8 /DUNICODE /D_UNICODE %SOURCE% %RESFILE% /link comctl32.lib shell32.lib shlwapi.lib user32.lib gdi32.lib /OUT:%OUTPUT%
+        if errorlevel 1 (
+            echo [错误] 资源编译失败
+            pause
+            exit /b 1
+        )
+        cl /EHsc /O2 /utf-8 /DUNICODE /D_UNICODE %SOURCE% %RESFILE% /link comctl32.lib shell32.lib shlwapi.lib user32.lib gdi32.lib /MANIFESTUAC:NO /OUT:%OUTPUT%
     ) else (
         cl /EHsc /O2 /utf-8 /DUNICODE /D_UNICODE %SOURCE% /link comctl32.lib shell32.lib shlwapi.lib user32.lib gdi32.lib /OUT:%OUTPUT%
     )
@@ -41,6 +46,7 @@ if not errorlevel 1 (
         exit /b 1
     )
     del /q *.obj 2>nul
+    if exist "%RESFILE%" del /q "%RESFILE%" 2>nul
     echo.
     echo ======================================
     echo   编译成功！
@@ -53,7 +59,7 @@ if not errorlevel 1 (
 :::: MinGW 编译函数
 :set_mingw_path
 :::: 优先检查 w64devkit 路径
-set "W64DEVKIT=D:\w64devkit\w64devkit\bin"
+set "W64DEVKIT=D:\AI\w64devkit\bin"
 if exist "%W64DEVKIT%\g++.exe" (
     set "PATH=%W64DEVKIT%;%PATH%"
     goto :do_mingw
@@ -70,6 +76,11 @@ echo.
 echo 正在编译 (MinGW, Unicode 模式)...
 if exist "%RCFILE%" (
     windres %RCFILE% -O coff -o %RESFILE%
+    if errorlevel 1 (
+        echo [错误] 资源编译失败
+        pause
+        exit /b 1
+    )
     g++ -O2 -mwindows -municode -static -o %OUTPUT% %SOURCE% %RESFILE% -lcomctl32 -lshlwapi -lgdi32
 ) else (
     g++ -O2 -mwindows -municode -static -o %OUTPUT% %SOURCE% -lcomctl32 -lshlwapi -lgdi32
@@ -80,6 +91,7 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+if exist "%RESFILE%" del /q "%RESFILE%" 2>nul
 echo.
 echo ======================================
 echo   编译成功！

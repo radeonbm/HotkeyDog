@@ -3,13 +3,8 @@
  * 像看门狗一样守护你的热键，防止游戏时误触！
  * 无需Python环境，编译后仅单个exe文件，体积约300KB
  *
- * 编译方法:
- *   MSVC:  cl /EHsc /O2 /utf-8 hotkey_dog.cpp /link comctl32.lib shell32.lib shlwapi.lib user32.lib gdi32.lib
- *   MinGW: g++ -O2 -mwindows -static -o HotkeyDog.exe hotkey_dog.cpp -lcomctl32 -lshlwapi
+ * 编译方法: 运行 build_cpp.bat（会嵌入管理员权限清单）。
  */
-
-#define UNICODE
-#define _UNICODE
 
 #include <windows.h>
 #include <windowsx.h>
@@ -25,10 +20,6 @@
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
-#pragma comment(linker,"\"/manifestdependency:type='win32' \
-    name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
-    processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
-
 // ============================================================
 // 常量定义
 // ============================================================
@@ -44,6 +35,9 @@
 #define ID_MENU_TOGGLE      201
 #define ID_MENU_EXIT        202
 #define ID_CHK_GROUP_START  300
+
+constexpr UINT kToggleModifiers = MOD_CONTROL | MOD_ALT | MOD_NOREPEAT;
+constexpr UINT kToggleVirtualKey = VK_F10;
 
 // 颜色主题
 namespace C {
@@ -81,15 +75,38 @@ struct BlockedCombo {
     DWORD mainKey = 0;          // 触发键 (0=仅修饰键)
     bool enabled = true;
 
+    static bool IsSameVirtualKey(DWORD expected, DWORD actual) {
+        if (expected == VK_CONTROL)
+            return actual == VK_CONTROL || actual == VK_LCONTROL || actual == VK_RCONTROL;
+        if (expected == VK_MENU)
+            return actual == VK_MENU || actual == VK_LMENU || actual == VK_RMENU;
+        if (expected == VK_SHIFT)
+            return actual == VK_SHIFT || actual == VK_LSHIFT || actual == VK_RSHIFT;
+        return expected == actual;
+    }
+
+    static bool IsModifierDown(DWORD modifier, DWORD currentVk) {
+        return IsSameVirtualKey(modifier, currentVk) ||
+            (GetAsyncKeyState(modifier) & 0x8000);
+    }
+
     bool Matches(DWORD vk) const {
         if (leftWinOnly && mainKey == 0)
             return vk == VK_LWIN;
-        if (vk != mainKey) return false;
-        if (ctrl  && !(GetAsyncKeyState(VK_CONTROL) & 0x8000)) return false;
-        if (alt   && !(GetAsyncKeyState(VK_MENU)    & 0x8000)) return false;
-        if (shift && !(GetAsyncKeyState(VK_SHIFT)    & 0x8000)) return false;
-        if (win   && !(GetAsyncKeyState(VK_LWIN) & 0x8000 ||
-                      GetAsyncKeyState(VK_RWIN) & 0x8000))     return false;
+        if (mainKey == 0) {
+            bool isTrigger = (ctrl && IsSameVirtualKey(VK_CONTROL, vk)) ||
+                             (alt && IsSameVirtualKey(VK_MENU, vk)) ||
+                             (shift && IsSameVirtualKey(VK_SHIFT, vk)) ||
+                             (win && (vk == VK_LWIN || vk == VK_RWIN));
+            if (!isTrigger) return false;
+        } else if (!IsSameVirtualKey(mainKey, vk)) {
+            return false;
+        }
+        if (ctrl  && !IsModifierDown(VK_CONTROL, vk)) return false;
+        if (alt   && !IsModifierDown(VK_MENU, vk))    return false;
+        if (shift && !IsModifierDown(VK_SHIFT, vk))   return false;
+        if (win   && !(IsModifierDown(VK_LWIN, vk) ||
+                      IsModifierDown(VK_RWIN, vk)))  return false;
         return true;
     }
 };
@@ -164,13 +181,6 @@ void InitDefaultGroups() {
         },
     };
 
-    for (auto& g : g_defaultGroups) {
-        for (auto& k : g.keys) {
-            if (k.mainKey == 0 && !k.leftWinOnly) {
-                k.mainKey = VK_SHIFT;
-            }
-        }
-    }
 }
 
 // ============================================================
@@ -180,6 +190,7 @@ void InitDefaultGroups() {
 HINSTANCE   g_hInst       = nullptr;
 HWND        g_hwndMain    = nullptr;
 HHOOK       g_hHook       = nullptr;
+HANDLE      g_hSingleInstance = nullptr;
 HFONT       g_hFontTitle  = nullptr;
 HFONT       g_hFontSub    = nullptr;
 HFONT       g_hFontNorm   = nullptr;
@@ -194,6 +205,10 @@ NOTIFYICONDATAW g_nid      = {};
 bool        g_protecting   = false;
 bool        g_trayCreated  = false;
 bool        g_notAdmin     = false;
+bool        g_toggleHotkeyRegistered = false;
+bool        g_hookRemovalFailed = false;
+DWORD       g_hookError = ERROR_SUCCESS;
+DWORD       g_hotkeyRegistrationError = ERROR_SUCCESS;
 std::wstring g_statusText;
 std::vector<HotKeyGroup> g_groups;
 
@@ -202,10 +217,17 @@ std::vector<HotKeyGroup> g_groups;
 // ============================================================
 
 std::wstring GetExeDir() {
-    WCHAR buf[MAX_PATH];
-    GetModuleFileNameW(nullptr, buf, MAX_PATH);
-    PathRemoveFileSpecW(buf);
-    return buf;
+    std::vector<WCHAR> buf(MAX_PATH);
+    for (;;) {
+        DWORD length = GetModuleFileNameW(nullptr, buf.data(), (DWORD)buf.size());
+        if (length == 0) return L".";
+        if (length < buf.size() - 1) {
+            std::wstring path(buf.data(), length);
+            size_t slash = path.find_last_of(L"\\/");
+            return slash == std::wstring::npos ? L"." : path.substr(0, slash);
+        }
+        buf.resize(buf.size() * 2);
+    }
 }
 
 std::wstring GetIniPath() {
@@ -213,8 +235,11 @@ std::wstring GetIniPath() {
 }
 
 HFONT CreateFontForUI(int size, bool bold = false) {
+    HDC screen = GetDC(nullptr);
+    int dpi = screen ? GetDeviceCaps(screen, LOGPIXELSY) : 96;
+    if (screen) ReleaseDC(nullptr, screen);
     return CreateFontW(
-        -MulDiv(size, GetDeviceCaps(GetDC(nullptr), LOGPIXELSY), 72),
+        -MulDiv(size, dpi, 72),
         0, 0, 0, bold ? FW_BOLD : FW_NORMAL,
         FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
@@ -242,9 +267,21 @@ void DeleteFonts() {
 }
 
 void UpdateStatusText() {
-    if (g_notAdmin) {
-        g_statusText = _(L"[!] 建议以管理员身份运行以确保所有热键可被屏蔽",
-                         L"[!] Run as admin to ensure all hotkeys can be blocked");
+    WCHAR errorText[160];
+    if (g_hookError != ERROR_SUCCESS) {
+        swprintf_s(errorText,
+            g_hookRemovalFailed ? _(L"[!] 无法停止键盘钩子（错误 %lu）", L"[!] Could not stop keyboard hook (error %lu)")
+                                : _(L"[!] 无法启动键盘钩子（错误 %lu）", L"[!] Could not start keyboard hook (error %lu)"),
+            g_hookError);
+        g_statusText = errorText;
+    } else if (g_notAdmin) {
+        g_statusText = _(L"[!] 必须以管理员身份运行才能启动守护",
+                         L"[!] Run as administrator to start the guard");
+    } else if (!g_toggleHotkeyRegistered) {
+        swprintf_s(errorText,
+            _(L"[!] Ctrl+Alt+F10 注册失败（错误 %lu），请使用窗口或托盘", L"[!] Ctrl+Alt+F10 unavailable (error %lu); use the window or tray"),
+            g_hotkeyRegistrationError);
+        g_statusText = errorText;
     } else if (g_protecting) {
         g_statusText = _(L"守护已启动 - 热键已屏蔽", L"Guard active - Hotkeys blocked");
     } else {
@@ -276,17 +313,25 @@ void LoadConfig() {
     }
 }
 
-void SaveConfig() {
+bool SaveConfig() {
     std::wstring ini = GetIniPath();
-    WritePrivateProfileStringW(L"Settings", L"Language", g_langEn ? L"1" : L"0", ini.c_str());
+    bool saved = WritePrivateProfileStringW(L"Settings", L"Language", g_langEn ? L"1" : L"0", ini.c_str()) != FALSE;
     for (const auto& g : g_groups) {
-        WritePrivateProfileStringW(L"Groups", g.name.c_str(),
-            g.groupEnabled ? L"1" : L"0", ini.c_str());
+        saved = WritePrivateProfileStringW(L"Groups", g.name.c_str(),
+            g.groupEnabled ? L"1" : L"0", ini.c_str()) != FALSE && saved;
         for (const auto& k : g.keys) {
-            WritePrivateProfileStringW(L"Keys", k.name.c_str(),
-                k.enabled ? L"1" : L"0", ini.c_str());
+            saved = WritePrivateProfileStringW(L"Keys", k.name.c_str(),
+                k.enabled ? L"1" : L"0", ini.c_str()) != FALSE && saved;
         }
     }
+    return saved;
+}
+
+void ShowConfigSaveError(HWND hwnd) {
+    MessageBoxW(hwnd,
+        _(L"配置无法保存，请确认程序所在目录可写。",
+          L"Could not save the configuration. Check that the program directory is writable."),
+        _(L"配置保存失败", L"Configuration Save Failed"), MB_OK | MB_ICONWARNING);
 }
 
 // ============================================================
@@ -294,9 +339,9 @@ void SaveConfig() {
 // ============================================================
 
 bool IsToggleKey(DWORD vk) {
-    if (vk == VK_F12 && (GetAsyncKeyState(VK_CONTROL) & 0x8000))
-        return true;
-    return false;
+    return g_toggleHotkeyRegistered && vk == kToggleVirtualKey &&
+        (GetAsyncKeyState(VK_CONTROL) & 0x8000) &&
+        (GetAsyncKeyState(VK_MENU) & 0x8000);
 }
 
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
@@ -325,29 +370,55 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     return CallNextHookEx(g_hHook, nCode, wParam, lParam);
 }
 
-void InstallHook() {
-    if (!g_hHook) {
-        g_hHook = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, g_hInst, 0);
+bool InstallHook() {
+    if (g_hHook) return true;
+    g_hHook = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, g_hInst, 0);
+    if (g_hHook) {
+        g_hookError = ERROR_SUCCESS;
+        g_hookRemovalFailed = false;
+        return true;
     }
+    g_hookError = GetLastError();
+    g_hookRemovalFailed = false;
+    return false;
 }
 
-void RemoveHook() {
-    if (g_hHook) {
-        UnhookWindowsHookEx(g_hHook);
+bool RemoveHook() {
+    if (!g_hHook) return true;
+    if (UnhookWindowsHookEx(g_hHook)) {
         g_hHook = nullptr;
+        g_hookError = ERROR_SUCCESS;
+        g_hookRemovalFailed = false;
+        return true;
     }
+    g_hookError = GetLastError();
+    g_hookRemovalFailed = true;
+    return false;
 }
 
 // ============================================================
 // 保护模式切换
 // ============================================================
 
-void ToggleProtection() {
-    g_protecting = !g_protecting;
+bool HasEnabledGroups() {
+    for (const auto& g : g_groups)
+        if (g.groupEnabled) return true;
+    return false;
+}
+
+bool ToggleProtection() {
     if (g_protecting) {
-        InstallHook();
+        if (!RemoveHook()) {
+            UpdateStatusText();
+            return false;
+        }
+        g_protecting = false;
     } else {
-        RemoveHook();
+        if (g_notAdmin || !HasEnabledGroups() || !InstallHook()) {
+            UpdateStatusText();
+            return false;
+        }
+        g_protecting = true;
     }
     UpdateStatusText();
     
@@ -356,6 +427,7 @@ void ToggleProtection() {
         UpdateWindow(g_btnProtect);
     }
     InvalidateRect(g_hwndMain, nullptr, FALSE);
+    return true;
 }
 
 // ============================================================
@@ -373,8 +445,8 @@ void AddTrayIcon() {
     g_nid.hIcon  = LoadIcon(g_hInst, MAKEINTRESOURCE(1));
     if (!g_nid.hIcon) g_nid.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
     wcscpy_s(g_nid.szTip, L"HotkeyDog");
-    Shell_NotifyIconW(NIM_ADD, &g_nid);
-    g_trayCreated = true;
+    if (Shell_NotifyIconW(NIM_ADD, &g_nid))
+        g_trayCreated = true;
 }
 
 void RemoveTrayIcon() {
@@ -453,6 +525,10 @@ std::wstring ComboToString(const BlockedCombo& k) {
         s += L"LWin";
         return s;
     }
+    if (k.mainKey == 0) {
+        if (!s.empty()) s.pop_back();
+        return s;
+    }
     if (k.mainKey == VK_SPACE)       s += L"Space";
     else if (k.mainKey == VK_TAB)    s += L"Tab";
     else if (k.mainKey == VK_F4)     s += L"F4";
@@ -507,7 +583,7 @@ LRESULT CALLBACK AboutWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         SelectObject(hdc, g_hFontNorm);
         SetTextColor(hdc, C::TEXT);
         RECT verRc = { 0, y, 460, y + 22 };
-        DrawTextW(hdc, L"v1.0", -1, &verRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(hdc, L"v1.1.0", -1, &verRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         y += 25;
 
         // 邮箱
@@ -713,8 +789,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         InitFonts();
         LoadConfig();
         CreateUI(hwnd);
+        g_toggleHotkeyRegistered = RegisterHotKey(hwnd, ID_HOTKEY_TOGGLE,
+            kToggleModifiers, kToggleVirtualKey) != FALSE;
+        if (!g_toggleHotkeyRegistered)
+            g_hotkeyRegistrationError = GetLastError();
         UpdateStatusText();
-        RegisterHotKey(hwnd, ID_HOTKEY_TOGGLE, MOD_CONTROL, VK_F12);
         AddTrayIcon();
         return 0;
     }
@@ -783,7 +862,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         SetTextColor(hdc, C::TEXT2);
         SelectObject(hdc, g_hFontSmall);
         RECT verRc = { 20, y + 28, 460, y + 46 };
-        DrawTextW(hdc, _(L"v1.0 C++ Native | 按 Ctrl+F12 快速切换", L"v1.0 C++ Native | Press Ctrl+F12 to toggle"),
+        DrawTextW(hdc, _(L"v1.1.0 C++ Native | 按 Ctrl+Alt+F10 快速切换", L"v1.1.0 C++ Native | Press Ctrl+Alt+F10 to toggle"),
             -1, &verRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
         SelectObject(hdc, oldF);
@@ -873,7 +952,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         // 语言切换
         if (id == ID_BTN_LANG) {
             g_langEn = !g_langEn;
-            SaveConfig();
+            if (!SaveConfig()) ShowConfigSaveError(hwnd);
             UpdateStatusText();
             
             // 强刷主窗口和顶部功能按钮
@@ -894,10 +973,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
         if (id == ID_BTN_PROTECT) {
-            bool anyEnabled = false;
-            for (const auto& g : g_groups)
-                if (g.groupEnabled) { anyEnabled = true; break; }
-            if (!anyEnabled && !g_protecting) {
+            if (!HasEnabledGroups() && !g_protecting) {
                 MessageBoxW(hwnd,
                     _(L"请至少选择一个要屏蔽的热键组", L"Please select at least one hotkey group"),
                     _(L"提示", L"Notice"), MB_OK | MB_ICONWARNING);
@@ -912,7 +988,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             int idx = id - ID_CHK_GROUP_START;
             if (idx < (int)g_groups.size()) {
                 g_groups[idx].groupEnabled = !g_groups[idx].groupEnabled;
-                SaveConfig();
+                if (!SaveConfig()) ShowConfigSaveError(hwnd);
+                if (g_protecting && !HasEnabledGroups())
+                    ToggleProtection();
                 
                 HWND hwndBtn = (HWND)lParam;
                 InvalidateRect(hwndBtn, nullptr, TRUE);
@@ -971,11 +1049,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
 
     case WM_DESTROY: {
-        if (g_protecting) {
+        if (g_hHook) {
             g_protecting = false;
             RemoveHook();
         }
-        UnregisterHotKey(hwnd, ID_HOTKEY_TOGGLE);
+        if (g_toggleHotkeyRegistered)
+            UnregisterHotKey(hwnd, ID_HOTKEY_TOGGLE);
         RemoveTrayIcon();
         
         if (g_brushBg)   DeleteObject(g_brushBg);
@@ -998,6 +1077,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
     g_hInst = hInst;
     InitDefaultGroups();
+
+    g_hSingleInstance = CreateMutexW(nullptr, TRUE, L"Local\\HotkeyDog.SingleInstance");
+    if (!g_hSingleInstance) return 1;
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        HWND existing = FindWindowW(L"HotkeyDogClass", nullptr);
+        if (existing) {
+            ShowWindow(existing, SW_RESTORE);
+            SetForegroundWindow(existing);
+        }
+        CloseHandle(g_hSingleInstance);
+        g_hSingleInstance = nullptr;
+        return 0;
+    }
 
     // DPI 感知
     try {
@@ -1023,6 +1115,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
             CloseHandle(hToken);
         }
     }
+    g_notAdmin = !isAdmin;
 
     // 注册窗口类
     WNDCLASSEXW wc = {};
@@ -1034,7 +1127,11 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
     wc.hCursor        = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground  = nullptr;
     wc.lpszClassName  = L"HotkeyDogClass";
-    RegisterClassExW(&wc);
+    if (!RegisterClassExW(&wc)) {
+        CloseHandle(g_hSingleInstance);
+        g_hSingleInstance = nullptr;
+        return 1;
+    }
 
     // 注册 About 窗口类
     WNDCLASSEXW wcAbout = {};
@@ -1046,7 +1143,11 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
     wcAbout.hCursor        = LoadCursor(nullptr, IDC_ARROW);
     wcAbout.hbrBackground  = nullptr;
     wcAbout.lpszClassName  = L"HotkeyDogAboutClass";
-    RegisterClassExW(&wcAbout);
+    if (!RegisterClassExW(&wcAbout)) {
+        CloseHandle(g_hSingleInstance);
+        g_hSingleInstance = nullptr;
+        return 1;
+    }
 
     // 创建窗口
     int w = 500, h = 600;
@@ -1061,20 +1162,24 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
         nullptr, nullptr, hInst, nullptr
     );
 
-    if (!isAdmin) {
-        g_notAdmin = true;
+    if (!g_hwndMain) {
+        CloseHandle(g_hSingleInstance);
+        g_hSingleInstance = nullptr;
+        return 1;
     }
-    UpdateStatusText();
 
     ShowWindow(g_hwndMain, nCmdShow);
     UpdateWindow(g_hwndMain);
 
     // 消息循环
-    MSG msg;
-    while (GetMessageW(&msg, nullptr, 0, 0)) {
+    MSG msg = {};
+    int messageResult = 0;
+    while ((messageResult = GetMessageW(&msg, nullptr, 0, 0)) > 0) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
 
-    return (int)msg.wParam;
+    CloseHandle(g_hSingleInstance);
+    g_hSingleInstance = nullptr;
+    return messageResult == -1 ? 1 : (int)msg.wParam;
 }

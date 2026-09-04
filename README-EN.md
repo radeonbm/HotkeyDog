@@ -9,7 +9,7 @@ Guard your system hotkeys like a loyal watchdog, completely preventing accidenta
 - **Cyberpunk Dark Theme GUI**: Beautiful owner-drawn pixel-level dark interface that goes easy on your eyes.
 - **Dynamic Group Management**: Hotkeys are categorized by software and system behaviors, allowing individual group toggles.
 - **Configuration Persistence**: Automatically reads and saves choices into `hotkey_dog.ini` within the same folder.
-- **One-Click Hot Toggle**: Press `Ctrl + F12` under any full-screen or gaming scenario to instantly enable/disable protection.
+- **One-Click Hot Toggle**: Press `Ctrl + Alt + F10` under any full-screen or gaming scenario to instantly enable/disable protection.
 - **Modern DPI Awareness**: Native support for high-DPI scaling; texts remain crisp and clear on 2K/4K displays.
 - **Minimize to System Tray**: Clicking minimize completely hides the window into the notification area (system tray) to save taskbar space.
 
@@ -18,22 +18,16 @@ Guard your system hotkeys like a loyal watchdog, completely preventing accidenta
 #### Run Directly (Recommended)
 
 1. Download the compiled `HotkeyDog.exe` from the Releases tab.
-2. **Right-click -> Run as administrator** (Required to hook and block high-privilege system shortcuts).
+2. Accept the UAC administrator prompt at launch (required to block shortcuts in elevated applications).
 3. Toggle the hotkey groups you wish to block, then click the **"Start Guard"** button.
 
 #### Compile from Source
 
-If you have a C++ development environment configured, compile it directly with zero runtime overhead:
-
-- **Using MinGW (g++)**:
-  g++ -O2 -mwindows -static -o HotkeyDog.exe hotkey_dog.cpp -lcomctl32 -lshlwapi
-
-- **Using MSVC (Visual Studio Command Prompt)**:
-  cl /EHsc /O2 /utf-8 hotkey_dog.cpp /link comctl32.lib shell32.lib shlwapi.lib user32.lib gdi32.lib
+After configuring MSVC or MinGW-w64, run `build_cpp.bat`. It embeds the administrator manifest; do not omit `HotkeyDog.rc` or `HotkeyDog.manifest`.
 
 ### ⌨️ Global Control Hotkey
 
-- **Ctrl + F12**: Universal Hot-Switch (Start Guard / Stop Guard instantly)
+- **Ctrl + Alt + F10**: Universal Hot-Switch (Start Guard / Stop Guard, without key-repeat toggles)
 
 ### 🚫 Blocked Hotkeys Mapping
 
@@ -69,6 +63,8 @@ If you have a C++ development environment configured, compile it directly with z
 HotkeyDog/
 ├── hotkey_dog.cpp          # Main C++ source code
 ├── build_cpp.bat           # One-click batch compilation script for Windows
+├── HotkeyDog.rc             # Resource definition embedding the manifest
+├── HotkeyDog.manifest       # Administrator execution manifest
 ├── HotkeyDog.exe           # Compiled standalone portable executable
 ├── readme_cn.md            # Chinese Documentation
 └── readme_en.md            # English Documentation
