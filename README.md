@@ -30,3 +30,25 @@ Guard your system hotkeys like a loyal watchdog, completely preventing accidenta
 
 ### 2. Compile / 从源码编译
 - Configure MSVC or MinGW-w64, then run `build_cpp.bat`. It embeds the administrator manifest. / 配置 MSVC 或 MinGW-w64 后运行 `build_cpp.bat`；它会嵌入管理员权限清单。
+
+## HotkeyDog v1.1.0
+
+### 中文
+
+- 修复全局键盘钩子注册、卸载失败后仍显示“已开启”的问题。
+- 防止重复启动多个实例，避免钩子和配置互相冲突。
+- 全局开关调整为 `Ctrl + Alt + F10`，避免与系统保留的 F12 冲突，并防止按住按键反复切换。
+- 修复组合键拦截在修饰键场景下偶发失效的问题。
+- 程序启动时请求管理员权限，以提升对高权限程序和游戏内快捷键的拦截能力。
+- 改进配置保存失败提示、托盘图标创建检查和系统资源释放。
+- 新增构建清单，确保发布版本带有管理员权限配置。
+
+### English
+
+- Fixed keyboard-hook registration and cleanup failures that could incorrectly show protection as enabled.
+- Prevented multiple running instances from conflicting over hooks and configuration.
+- Changed the global toggle to `Ctrl + Alt + F10` to avoid the system-reserved F12 key and prevent repeated toggles while holding keys.
+- Fixed occasional shortcut-blocking failures involving modifier keys.
+- The application now requests administrator privileges at startup for improved blocking in elevated applications and games.
+- Improved configuration-save error reporting, tray-icon creation checks, and system resource cleanup.
+- Added a build manifest to ensure release builds include the administrator privilege configuration.
